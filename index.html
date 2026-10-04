@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 外部通信を完全に遮断するセキュリティ設定。データがネットに送られることはありません -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>ローカルメモ</title>
+<style>
+:root{
+  --bg:#f3f5f3; --panel:#ffffff; --ink:#1c2420; --sub:#66716b; --line:#dde3df;
+  --accent:#0f6b62; --accent-ink:#ffffff; --tag:#e3efec; --tag-ink:#0b5a52;
+  --danger:#b3261e; --sel:#e8f1ee; --code:#eef1ef;
+  --font:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,"Noto Sans Mono CJK JP",monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#111513; --panel:#181d1b; --ink:#e6ebe8; --sub:#8d9a93; --line:#2a322e;
+    --accent:#4fc1b2; --accent-ink:#06211d; --tag:#1f3430; --tag-ink:#8fdcd0;
+    --danger:#f2867f; --sel:#202a26; --code:#222a26;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111513; --panel:#181d1b; --ink:#e6ebe8; --sub:#8d9a93; --line:#2a322e;
+  --accent:#4fc1b2; --accent-ink:#06211d; --tag:#1f3430; --tag-ink:#8fdcd0;
+  --danger:#f2867f; --sel:#202a26; --code:#222a26;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--font);-webkit-text-size-adjust:100%}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:grid;grid-template-columns:320px 1fr;height:100%}
+.side{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--panel)}
+.side-head{padding:12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.row{display:flex;gap:8px;align-items:center}
+.search{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.btn{padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.btn:hover{background:var(--sel)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--danger)}
+.btn.icon{padding:7px 10px}
+.tagbar{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:2px 10px;border-radius:999px;background:var(--tag);color:var(--tag-ink);font-size:12.5px;border:1px solid transparent}
+button.chip.on{background:var(--accent);color:var(--accent-ink)}
+.list{flex:1;overflow:auto;min-height:0}
+.item{display:block;width:100%;text-align:left;padding:10px 14px;border:0;border-bottom:1px solid var(--line);background:transparent}
+.item:hover{background:var(--sel)}
+.item.sel{background:var(--sel);box-shadow:inset 3px 0 0 var(--accent)}
+.item .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .m{font-size:12.5px;color:var(--sub);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.item .snip{font-size:13px;color:var(--sub);overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+.empty{padding:28px 18px;color:var(--sub);text-align:center}
+.foot{padding:8px 12px;border-top:1px solid var(--line);font-size:12.5px;color:var(--sub);display:flex;justify-content:space-between;gap:8px;align-items:center}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.bar{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+.bar .grow{flex:1}
+.status{font-size:12.5px;color:var(--sub)}
+.back{display:none}
+.editor{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 20px;gap:10px;overflow:auto}
+.title{width:100%;border:0;background:transparent;font-size:24px;font-weight:700;padding:4px 0;outline:none;line-height:1.3}
+.meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.meta input{padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.meta .tags{flex:1;min-width:160px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{border:0;background:transparent;padding:6px 14px;border-bottom:2px solid transparent;color:var(--sub)}
+.tab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.body{flex:1;min-height:320px;width:100%;resize:none;border:0;background:transparent;outline:none;font:15px/1.8 var(--mono);padding:4px 0}
+.preview{flex:1;min-height:320px;max-width:76ch}
+.preview h1,.preview h2,.preview h3{line-height:1.35;margin:1.2em 0 .4em}
+.preview h1{font-size:1.6em}.preview h2{font-size:1.3em}.preview h3{font-size:1.1em}
+.preview p{margin:.6em 0}
+.preview code{background:var(--code);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:.92em}
+.preview pre{background:var(--code);padding:12px;border-radius:8px;overflow:auto}
+.preview pre code{padding:0;background:none}
+.preview blockquote{margin:.8em 0;padding:2px 14px;border-left:3px solid var(--accent);color:var(--sub)}
+.preview a{color:var(--accent)}
+.preview hr{border:0;border-top:1px solid var(--line);margin:1.2em 0}
+.preview ul,.preview ol{padding-left:1.4em}
+.hidden{display:none!important}
+.placeholder{margin:auto;color:var(--sub);text-align:center;padding:24px;max-width:36ch}
+.placeholder p{margin:.4em 0}
+.menu{position:relative}
+.pop{position:absolute;right:0;top:calc(100% + 6px);z-index:10;min-width:220px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.pop button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:6px}
+.pop button:hover{background:var(--sel)}
+.pop .note{font-size:12px;color:var(--sub);padding:4px 10px 6px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:13.5px;z-index:50}
+
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  .main{display:none}
+  body.editing .side{display:none}
+  body.editing .main{display:flex}
+  .back{display:inline-block}
+  .title{font-size:20px}
+  .editor{padding:12px 14px}
+}
+@media (prefers-reduced-motion:no-preference){
+  .toast{animation:fade .2s ease-out}
+  @keyframes fade{from{opacity:0;transform:translate(-50%,6px)}}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="side-head">
+      <div class="row">
+        <input id="q" class="search" type="search" placeholder="検索(タイトル・本文・タグ)" aria-label="検索">
+        <button id="new" class="btn primary" title="新規メモ (Ctrl/Cmd+Alt+N)">新規</button>
+      </div>
+      <div id="tagbar" class="tagbar"></div>
+    </div>
+    <div id="list" class="list"></div>
+    <div class="foot">
+      <span id="count"></span>
+      <button id="theme" class="btn icon" title="テーマ切替">🌓</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="bar">
+      <button id="back" class="btn back">← 一覧</button>
+      <span id="status" class="status grow"></span>
+      <button id="pin" class="btn icon hidden" title="お気に入り">☆</button>
+      <div class="menu">
+        <button id="menuBtn" class="btn">保存・取り込み ▾</button>
+        <div id="pop" class="pop hidden">
+          <button data-act="folder">📁 フォルダに自動保存(.md)</button>
+          <button data-act="exportOne">このメモを .md で保存</button>
+          <button data-act="exportAll">全メモを ZIP で保存</button>
+          <button data-act="importMd">.md ファイルを取り込む</button>
+          <button data-act="backup">バックアップ(JSON)</button>
+          <div class="note" id="folderNote"></div>
+        </div>
+      </div>
+      <button id="del" class="btn danger hidden">削除</button>
+    </div>
+
+    <div id="placeholder" class="placeholder">
+      <p><strong>メモを選ぶか、新規作成してください</strong></p>
+      <p>データはこのブラウザの中にだけ保存され、外部には送信されません。</p>
+    </div>
+
+    <div id="editor" class="editor hidden">
+      <input id="title" class="title" placeholder="タイトル" aria-label="タイトル">
+      <div class="meta">
+        <input id="date" type="date" aria-label="日付">
+        <input id="tags" class="tags" placeholder="タグ(カンマ区切り 例: 読書, AI)" aria-label="タグ" list="taglist">
+        <datalist id="taglist"></datalist>
+      </div>
+      <div class="tabs" role="tablist">
+        <button id="tabEdit" class="tab on" role="tab">編集</button>
+        <button id="tabView" class="tab" role="tab">プレビュー</button>
+        <span class="grow" style="flex:1"></span>
+        <span id="wc" class="status" style="align-self:center"></span>
+      </div>
+      <textarea id="body" class="body" placeholder="本文(Markdown が使えます)" aria-label="本文"></textarea>
+      <div id="preview" class="preview hidden"></div>
+    </div>
+  </main>
+</div>
+<input id="file" type="file" accept=".md,.markdown,.txt,.json" multiple class="hidden">
+
+<script>
+"use strict";
+/* ============ 小さなユーティリティ ============ */
+const $ = id => document.getElementById(id);
+const today = () => { const d = new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const esc = s => s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2200); }
+function download(name, blob){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+
+/* ============ IndexedDB(このブラウザ内だけに保存) ============ */
+let db;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open("local-memo",1);
+    r.onupgradeneeded = () => { r.result.createObjectStore("notes",{keyPath:"id"}); r.result.createObjectStore("meta"); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+const tx = (store,mode,fn) => new Promise((res,rej)=>{
+  const t = db.transaction(store,mode); const out = fn(t.objectStore(store));
+  t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error);
+});
+const dbAll = () => tx("notes","readonly",s=>s.getAll());
+const dbPut = n => tx("notes","readwrite",s=>s.put(n));
+const dbDel = id => tx("notes","readwrite",s=>s.delete(id));
+const metaGet = k => tx("meta","readonly",s=>s.get(k));
+const metaSet = (k,v) => tx("meta","readwrite",s=>s.put(v,k));
+
+/* ============ 状態 ============ */
+let notes = [];
+let curId = null;
+let filterTag = null;
+let dirHandle = null;     // 自動保存先フォルダ
+let dirReady = false;
+let saveTimer = null;
+
+/* ============ Markdown 変換(保存形式) ============ */
+function toMarkdown(n){
+  const tags = "[" + n.tags.map(t => /[,\[\]:#"']/.test(t) ? JSON.stringify(t) : t).join(", ") + "]";
+  return "---\n" +
+    "id: " + n.id + "\n" +
+    "title: " + JSON.stringify(n.title) + "\n" +
+    "date: " + n.date + "\n" +
+    "tags: " + tags + "\n" +
+    "---\n\n" + n.body.replace(/\s+$/,"") + "\n";
+}
+function parseMarkdown(text, fallbackName){
+  text = text.replace(/^\uFEFF/,"").replace(/\r\n/g,"\n");
+  const n = { id: uid(), title: "", date: today(), tags: [], body: text, pinned:false, updated: Date.now() };
+  const m = text.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (m){
+    n.body = text.slice(m[0].length).replace(/^\n/,"");
+    for (const line of m[1].split("\n")){
+      const kv = line.match(/^(\w+):\s*(.*)$/); if(!kv) continue;
+      const k = kv[1], v = kv[2].trim();
+      if (k==="id" && v) n.id = v;
+      else if (k==="title"){ try{ n.title = v.startsWith('"') ? JSON.parse(v) : v; }catch{ n.title=v; } }
+      else if (k==="date" && /^\d{4}-\d{2}-\d{2}/.test(v)) n.date = v.slice(0,10);
+      else if (k==="tags"){
+        const inner = v.replace(/^\[|\]$/g,"");
+        n.tags = inner.split(",").map(s=>s.trim().replace(/^["']|["']$/g,"")).filter(Boolean);
+      }
+    }
+  }
+  if (!n.title){
+    const h = n.body.match(/^#\s+(.+)$/m);
+    n.title = h ? h[1].trim() : (fallbackName||"無題").replace(/\.(md|markdown|txt)$/i,"").replace(/^\d{4}-\d{2}-\d{2}_?/,"");
+  }
+  return n;
+}
+function fileNameFor(n){
+  const safe = (n.title||"無題").replace(/[\\/:*?"<>|\n\r\t]/g," ").trim().slice(0,60) || "無題";
+  let base = n.date + "_" + safe, name = base + ".md", i = 2;
+  while (notes.some(o => o.id!==n.id && o.filename===name)) name = base + "-" + (i++) + ".md";
+  return name;
+}
+
+/* ============ 簡易 Markdown プレビュー ============ */
+function inline(s){
+  s = esc(s);
+  s = s.replace(/`([^`]+)`/g,"<code>$1</code>");
+  s = s.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>");
+  s = s.replace(/(^|[^*])\*([^*]+)\*/g,"$1<em>$2</em>");
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  return s;
+}
+function renderMd(src){
+  const lines = src.replace(/\r\n/g,"\n").split("\n");
+  let html="", i=0;
+  while(i<lines.length){
+    const l = lines[i];
+    if (/^```/.test(l)){
+      const buf=[]; i++;
+      while(i<lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++; html += "<pre><code>"+esc(buf.join("\n"))+"</code></pre>"; continue;
+    }
+    let m;
+    if ((m=l.match(/^(#{1,3})\s+(.*)$/))){ html += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`; i++; continue; }
+    if (/^(-{3,}|\*{3,})\s*$/.test(l)){ html+="<hr>"; i++; continue; }
+    if (/^>\s?/.test(l)){
+      const buf=[]; while(i<lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/,""));
+      html += "<blockquote>"+inline(buf.join("<br>"))+"</blockquote>"; continue;
+    }
+    if (/^\s*[-*]\s+/.test(l)){
+      let items=""; while(i<lines.length && /^\s*[-*]\s+/.test(lines[i])){ items+="<li>"+inline(lines[i].replace(/^\s*[-*]\s+/,""))+"</li>"; i++; }
+      html += "<ul>"+items+"</ul>"; continue;
+    }
+    if (/^\s*\d+\.\s+/.test(l)){
+      let items=""; while(i<lines.length && /^\s*\d+\.\s+/.test(lines[i])){ items+="<li>"+inline(lines[i].replace(/^\s*\d+\.\s+/,""))+"</li>"; i++; }
+      html += "<ol>"+items+"</ol>"; continue;
+    }
+    if (!l.trim()){ i++; continue; }
+    const buf=[]; while(i<lines.length && lines[i].trim() && !/^(#{1,3}\s|```|>|\s*[-*]\s|\s*\d+\.\s)/.test(lines[i])) buf.push(lines[i++]);
+    html += "<p>"+inline(buf.join("\n")).replace(/\n/g,"<br>")+"</p>";
+  }
+  return html || '<p class="status">本文がありません</p>';
+}
+
+/* ============ フォルダ自動保存(File System Access API) ============ */
+const fsSupported = "showDirectoryPicker" in window;
+async function checkDirPerm(request){
+  if(!dirHandle) return false;
+  let p = await dirHandle.queryPermission({mode:"readwrite"});
+  if (p!=="granted" && request) p = await dirHandle.requestPermission({mode:"readwrite"});
+  dirReady = p==="granted"; updateFolderNote(); return dirReady;
+}
+function updateFolderNote(){
+  $("folderNote").textContent = !fsSupported ? "フォルダ保存は Chrome / Edge のPC版で使えます"
+    : !dirHandle ? "未設定:メモを .md として直接フォルダに保存できます"
+    : dirReady ? "保存先: " + dirHandle.name + "(自動保存中)"
+    : "保存先: " + dirHandle.name + "(クリックで再許可)";
+}
+async function writeFile(n){
+  if(!dirReady) return;
+  try{
+    const name = fileNameFor(n);
+    if (n.filename && n.filename!==name){ try{ await dirHandle.removeEntry(n.filename); }catch{} }
+    n.filename = name;
+    const fh = await dirHandle.getFileHandle(name,{create:true});
+    const w = await fh.createWritable(); await w.write(toMarkdown(n)); await w.close();
+  }catch(e){ console.error(e); setStatus("フォルダへの保存に失敗しました"); }
+}
+async function chooseFolder(){
+  if(!fsSupported){ toast("このブラウザはフォルダ保存に未対応です"); return; }
+  if (dirHandle && !dirReady){ if(await checkDirPerm(true)){ await syncAllToFolder(); } return; }
+  try{
+    dirHandle = await showDirectoryPicker({mode:"readwrite"});
+    await metaSet("dir", dirHandle);
+    dirReady = true; updateFolderNote();
+    // 既存の .md を取り込み
+    let imported = 0;
+    for await (const [name,h] of dirHandle.entries()){
+      if (h.kind!=="file" || !/\.md$/i.test(name)) continue;
+      const text = await (await h.getFile()).text();
+      const n = parseMarkdown(text,name); n.filename = name;
+      const same = notes.find(o => o.id===n.id || o.filename===name);
+      if (!same){ notes.push(n); await dbPut(n); imported++; }
+    }
+    await syncAllToFolder();
+    refresh(); toast("フォルダを設定しました" + (imported? "("+imported+"件を取り込み)":""));
+  }catch(e){ if(e.name!=="AbortError") console.error(e); }
+}
+async function syncAllToFolder(){ for (const n of notes) await writeFile(n); for (const n of notes) await dbPut(n); }
+
+/* ============ 一覧表示 ============ */
+function sorted(){
+  return [...notes].sort((a,b)=> (b.pinned?1:0)-(a.pinned?1:0) || b.date.localeCompare(a.date) || b.updated-a.updated);
+}
+function allTags(){ const m=new Map(); notes.forEach(n=>n.tags.forEach(t=>m.set(t,(m.get(t)||0)+1))); return [...m.entries()].sort((a,b)=>b[1]-a[1]); }
+function refresh(){
+  const q = $("q").value.trim().toLowerCase();
+  const tags = allTags();
+  if (filterTag && !tags.some(t=>t[0]===filterTag)) filterTag=null;
+  $("tagbar").innerHTML = tags.map(([t,c])=>`<button class="chip ${t===filterTag?"on":""}" data-tag="${esc(t)}">${esc(t)} ${c}</button>`).join("");
+  $("taglist").innerHTML = tags.map(([t])=>`<option value="${esc(t)}">`).join("");
+  const rows = sorted().filter(n => (!filterTag || n.tags.includes(filterTag)) &&
+    (!q || (n.title+" "+n.body+" "+n.tags.join(" ")).toLowerCase().includes(q)));
+  $("list").innerHTML = rows.length ? rows.map(n=>`
+    <button class="item ${n.id===curId?"sel":""}" data-id="${n.id}">
+      <div class="t">${n.pinned?"★ ":""}${esc(n.title||"無題")}</div>
+      <div class="m"><span>${n.date}</span>${n.tags.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
+      <div class="snip">${esc(n.body.replace(/\s+/g," ").slice(0,80))}</div>
+    </button>`).join("")
+    : `<div class="empty">${notes.length ? "条件に合うメモがありません" : "まだメモがありません。<br>「新規」から最初の1件を書いてみましょう。"}</div>`;
+  $("count").textContent = notes.length + "件" + (rows.length!==notes.length ? "(表示 "+rows.length+")" : "");
+}
+
+/* ============ エディタ ============ */
+function cur(){ return notes.find(n=>n.id===curId); }
+function setStatus(s){ $("status").textContent = s; }
+function open(id){
+  curId = id; const n = cur();
+  $("placeholder").classList.toggle("hidden", !!n);
+  $("editor").classList.toggle("hidden", !n);
+  $("del").classList.toggle("hidden", !n); $("pin").classList.toggle("hidden", !n);
+  if(!n){ document.body.classList.remove("editing"); refresh(); return; }
+  $("title").value = n.title; $("date").value = n.date; $("tags").value = n.tags.join(", "); $("body").value = n.body;
+  $("pin").textContent = n.pinned ? "★" : "☆";
+  showTab("edit"); updateWc(); setStatus("保存済み");
+  document.body.classList.add("editing"); refresh();
+}
+function showTab(t){
+  const v = t==="view";
+  $("tabEdit").classList.toggle("on",!v); $("tabView").classList.toggle("on",v);
+  $("body").classList.toggle("hidden",v); $("preview").classList.toggle("hidden",!v);
+  if(v) $("preview").innerHTML = renderMd($("body").value);
+}
+function updateWc(){ $("wc").textContent = $("body").value.replace(/\s/g,"").length + "文字"; }
+function readForm(){
+  const n = cur(); if(!n) return;
+  n.title = $("title").value.trim();
+  n.date = $("date").value || today();
+  n.tags = [...new Set($("tags").value.split(/[,、]/).map(s=>s.trim().replace(/^#/,"")).filter(Boolean))];
+  n.body = $("body").value; n.updated = Date.now();
+}
+function scheduleSave(){
+  setStatus("保存中…"); clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 500);
+}
+async function saveNow(){
+  clearTimeout(saveTimer); const n = cur(); if(!n) return;
+  readForm(); await writeFile(n); await dbPut(n); refresh();
+  setStatus(dirReady ? "保存済み(フォルダにも保存)" : "保存済み(このブラウザ内)");
+}
+async function newNote(){
+  await saveNow();
+  const n = { id: uid(), title:"", date: today(), tags: filterTag?[filterTag]:[], body:"", pinned:false, updated: Date.now() };
+  notes.push(n); await dbPut(n); open(n.id); $("title").focus();
+}
+async function deleteNote(){
+  const n = cur(); if(!n) return;
+  if(!confirm("「"+(n.title||"無題")+"」を削除しますか?\n(フォルダ連携中は .md ファイルも削除されます)")) return;
+  if (dirReady && n.filename){ try{ await dirHandle.removeEntry(n.filename); }catch{} }
+  notes = notes.filter(x=>x.id!==n.id); await dbDel(n.id); open(null); toast("削除しました");
+}
+
+/* ============ ZIP 作成(ライブラリ不要) ============ */
+const crcTable = (()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(b){ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c = crcTable[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function makeZip(files){
+  const enc = new TextEncoder(), parts=[], central=[]; let offset=0;
+  for(const f of files){
+    const name = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true);
+    lh.setUint32(14,crc,true); lh.setUint32(18,data.length,true); lh.setUint32(22,data.length,true); lh.setUint16(26,name.length,true);
+    parts.push(lh.buffer,name,data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true);
+    ch.setUint32(16,crc,true); ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true); ch.setUint16(28,name.length,true); ch.setUint32(42,offset,true);
+    central.push(ch.buffer,name);
+    offset += 30 + name.length + data.length;
+  }
+  const csize = central.reduce((s,p)=>s+(p.byteLength),0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,files.length,true); end.setUint16(10,files.length,true); end.setUint32(12,csize,true); end.setUint32(16,offset,true);
+  return new Blob([...parts,...central,end.buffer],{type:"application/zip"});
+}
+
+/* ============ 書き出し・取り込み ============ */
+async function doAction(act){
+  $("pop").classList.add("hidden");
+  if (act==="folder") return chooseFolder();
+  if (act==="exportOne"){ await saveNow(); const n=cur(); if(!n) return toast("メモを選んでください"); return download(fileNameFor(n), new Blob([toMarkdown(n)],{type:"text/markdown"})); }
+  if (act==="exportAll"){
+    await saveNow(); if(!notes.length) return toast("メモがありません");
+    const names = new Set();
+    const files = sorted().map(n=>{ let nm=fileNameFor(n); while(names.has(nm)) nm=nm.replace(/\.md$/,"_"+uid().slice(-3)+".md"); names.add(nm); return {name:nm,text:toMarkdown(n)}; });
+    return download("memo-"+today()+".zip", makeZip(files));
+  }
+  if (act==="importMd") return $("file").click();
+  if (act==="backup"){ await saveNow(); return download("memo-backup-"+today()+".json", new Blob([JSON.stringify(notes,null,2)],{type:"application/json"})); }
+}
+$("file").addEventListener("change", async e=>{
+  let added=0;
+  for(const f of e.target.files){
+    const text = await f.text();
+    if (/\.json$/i.test(f.name)){
+      try{ const arr = JSON.parse(text); for(const o of arr){ if(o&&o.id&&!notes.some(x=>x.id===o.id)){ notes.push({title:"",date:today(),tags:[],body:"",pinned:false,updated:Date.now(),...o}); await dbPut(notes[notes.length-1]); added++; } } }catch{ toast("JSONを読み込めませんでした"); }
+      continue;
+    }
+    const n = parseMarkdown(text,f.name);
+    if (notes.some(x=>x.id===n.id)) n.id = uid();
+    notes.push(n); await dbPut(n); await writeFile(n); added++;
+  }
+  e.target.value=""; refresh(); toast(added+"件を取り込みました");
+});
+
+/* ============ イベント ============ */
+$("new").onclick = newNote;
+$("back").onclick = async()=>{ await saveNow(); document.body.classList.remove("editing"); };
+$("del").onclick = deleteNote;
+$("pin").onclick = ()=>{ const n=cur(); if(!n) return; n.pinned=!n.pinned; $("pin").textContent=n.pinned?"★":"☆"; scheduleSave(); };
+$("q").addEventListener("input", refresh);
+["title","date","tags","body"].forEach(id=>$(id).addEventListener("input",()=>{ scheduleSave(); if(id==="body") updateWc(); }));
+$("tabEdit").onclick = ()=>showTab("edit");
+$("tabView").onclick = ()=>showTab("view");
+$("list").addEventListener("click", async e=>{ const b=e.target.closest(".item"); if(!b) return; await saveNow(); open(b.dataset.id); });
+$("tagbar").addEventListener("click", e=>{ const b=e.target.closest("[data-tag]"); if(!b) return; filterTag = filterTag===b.dataset.tag ? null : b.dataset.tag; refresh(); });
+$("menuBtn").onclick = e=>{ e.stopPropagation(); $("pop").classList.toggle("hidden"); updateFolderNote(); };
+$("pop").addEventListener("click", e=>{ const b=e.target.closest("[data-act]"); if(b) doAction(b.dataset.act); });
+document.addEventListener("click", e=>{ if(!e.target.closest(".menu")) $("pop").classList.add("hidden"); });
+$("theme").onclick = ()=>{
+  const r = document.documentElement, dark = getComputedStyle(r).getPropertyValue("--bg").trim()==="#111513";
+  const next = dark ? "light" : "dark"; r.dataset.theme = next; metaSet("theme", next);
+};
+document.addEventListener("keydown", e=>{
+  const mod = e.ctrlKey||e.metaKey;
+  if (mod && e.key.toLowerCase()==="s"){ e.preventDefault(); saveNow().then(()=>toast("保存しました")); }
+  if (mod && e.altKey && e.key.toLowerCase()==="n"){ e.preventDefault(); newNote(); }
+  if (e.key==="Escape") $("pop").classList.add("hidden");
+});
+window.addEventListener("beforeunload", ()=>{ if(saveTimer){ readForm(); const n=cur(); if(n) dbPut(n); } });
+// タブ(Tab キー)でインデント
+$("body").addEventListener("keydown", e=>{
+  if(e.key==="Tab" && !e.shiftKey){ e.preventDefault(); const t=e.target,s=t.selectionStart; t.setRangeText("  ",s,t.selectionEnd,"end"); t.dispatchEvent(new Event("input")); }
+});
+
+/* ============ 起動 ============ */
+(async function init(){
+  try{
+    db = await openDB();
+    notes = await dbAll();
+    const th = await metaGet("theme"); if(th) document.documentElement.dataset.theme = th;
+    try{ dirHandle = await metaGet("dir") || null; }catch{ dirHandle=null; }
+    if (dirHandle) await checkDirPerm(false);
+    updateFolderNote();
+  }catch(e){
+    console.error(e); toast("このブラウザではデータ保存を利用できません(プライベートモード等)");
+  }
+  refresh(); open(null);
+})();
+</script>
+</body>
+</html>
