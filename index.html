@@ -31,12 +31,12 @@
 }
 *,*::before,*::after{box-sizing:inherit}
 html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--font);-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--font);-webkit-text-size-adjust:100%;display:flex;flex-direction:column}
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-.app{display:grid;grid-template-columns:320px 1fr;height:100%}
+.app{display:grid;grid-template-columns:320px 1fr;flex:1;min-height:0}
 .side{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--panel)}
 .side-head{padding:12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
 .row{display:flex;gap:8px;align-items:center}
@@ -95,7 +95,30 @@ button.chip.on{background:var(--accent);color:var(--accent-ink)}
 .pop .note{font-size:12px;color:var(--sub);padding:4px 10px 6px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:13.5px;z-index:50}
 
+
+.top{display:flex;gap:4px;align-items:center;padding:6px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.mode{border:0;background:transparent;padding:6px 16px;border-radius:8px;font-weight:600;color:var(--sub)}
+.mode.on{background:var(--sel);color:var(--ink)}
+.badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:4px;border-radius:999px;background:var(--danger);color:var(--bg);font-size:11px;line-height:18px;text-align:center}
+.todoView{flex:1;min-height:0;overflow:auto}
+.todoWrap{max-width:720px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.addbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.field{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);min-width:0}
+.addbox .field.text,.tdedit{width:100%}
+.row.wrap{flex-wrap:wrap}
+.row.between{justify-content:space-between}
+.td{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.td.done .tdtext{text-decoration:line-through;color:var(--sub)}
+.chk{width:20px;height:20px;margin-top:3px;accent-color:var(--accent);flex:none}
+.tdmain{flex:1;min-width:0}
+.tdtext{word-break:break-word}
+.tdmeta{font-size:12.5px;color:var(--sub);display:flex;gap:10px;flex-wrap:wrap}
+.due.over{color:var(--danger);font-weight:600}
+.due.today{color:var(--accent);font-weight:600}
+.ib{border:0;background:transparent;padding:2px 7px;border-radius:6px;color:var(--sub);flex:none}
+.ib:hover{background:var(--sel);color:var(--ink)}
 @media (max-width:760px){
+  body.editing .top{display:none}
   .app{grid-template-columns:1fr}
   .main{display:none}
   body.editing .side{display:none}
@@ -111,7 +134,11 @@ button.chip.on{background:var(--accent);color:var(--accent-ink)}
 </style>
 </head>
 <body>
-<div class="app">
+<header class="top">
+  <button id="modeNotes" class="mode on">メモ</button>
+  <button id="modeTodo" class="mode">ToDo<span id="todoBadge" class="badge hidden"></span></button>
+</header>
+<div class="app" id="app">
   <aside class="side">
     <div class="side-head">
       <div class="row">
@@ -169,6 +196,28 @@ button.chip.on{background:var(--accent);color:var(--accent-ink)}
     </div>
   </main>
 </div>
+<section id="todoView" class="todoView hidden">
+  <div class="todoWrap">
+    <div class="addbox">
+      <input id="tdText" class="field text" placeholder="やることを入力(Enterで追加)" aria-label="ToDo">
+      <div class="row wrap">
+        <input id="tdDate" class="field" type="date" aria-label="期限の日付">
+        <input id="tdTime" class="field" type="time" aria-label="期限の時刻">
+        <select id="tdRepeat" class="field" aria-label="繰り返し">
+          <option value="none">繰り返しなし</option><option value="daily">毎日</option>
+          <option value="weekly">毎週</option><option value="monthly">毎月</option>
+        </select>
+        <button id="tdAdd" class="btn primary">追加</button>
+      </div>
+    </div>
+    <div class="row between wrap">
+      <div id="tdFilters" class="tagbar"></div>
+      <button id="tdNotify" class="btn"></button>
+    </div>
+    <div id="tdList"></div>
+    <p class="status">時刻を決めない場合は期限日の9:00に通知します。通知はこのページを開いている間だけ動きます。スマホなどで確実に通知したいときは 📅 でカレンダーに追加してください。</p>
+  </div>
+</section>
 <input id="file" type="file" accept=".md,.markdown,.txt,.json" multiple class="hidden">
 
 <script>
@@ -185,8 +234,8 @@ function download(name, blob){ const a=document.createElement("a"); a.href=URL.c
 let db;
 function openDB(){
   return new Promise((res,rej)=>{
-    const r = indexedDB.open("local-memo",1);
-    r.onupgradeneeded = () => { r.result.createObjectStore("notes",{keyPath:"id"}); r.result.createObjectStore("meta"); };
+    const r = indexedDB.open("local-memo",2);
+    r.onupgradeneeded = () => { const d=r.result; if(!d.objectStoreNames.contains("notes")) d.createObjectStore("notes",{keyPath:"id"}); if(!d.objectStoreNames.contains("meta")) d.createObjectStore("meta"); if(!d.objectStoreNames.contains("todos")) d.createObjectStore("todos",{keyPath:"id"}); };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
@@ -325,7 +374,7 @@ async function chooseFolder(){
     // 既存の .md を取り込み
     let imported = 0;
     for await (const [name,h] of dirHandle.entries()){
-      if (h.kind!=="file" || !/\.md$/i.test(name)) continue;
+      if (h.kind!=="file" || !/\.md$/i.test(name) || name==="_todos.md") continue;
       const text = await (await h.getFile()).text();
       const n = parseMarkdown(text,name); n.filename = name;
       const same = notes.find(o => o.id===n.id || o.filename===name);
@@ -335,7 +384,7 @@ async function chooseFolder(){
     refresh(); toast("フォルダを設定しました" + (imported? "("+imported+"件を取り込み)":""));
   }catch(e){ if(e.name!=="AbortError") console.error(e); }
 }
-async function syncAllToFolder(){ for (const n of notes) await writeFile(n); for (const n of notes) await dbPut(n); }
+async function syncAllToFolder(){ for (const n of notes) await writeFile(n); for (const n of notes) await dbPut(n); await writeTodosFile(); }
 
 /* ============ 一覧表示 ============ */
 function sorted(){
@@ -441,17 +490,17 @@ async function doAction(act){
     await saveNow(); if(!notes.length) return toast("メモがありません");
     const names = new Set();
     const files = sorted().map(n=>{ let nm=fileNameFor(n); while(names.has(nm)) nm=nm.replace(/\.md$/,"_"+uid().slice(-3)+".md"); names.add(nm); return {name:nm,text:toMarkdown(n)}; });
-    return download("memo-"+today()+".zip", makeZip(files));
+    if(todos.length) files.push({name:"_todos.md",text:todosMd()}); return download("memo-"+today()+".zip", makeZip(files));
   }
   if (act==="importMd") return $("file").click();
-  if (act==="backup"){ await saveNow(); return download("memo-backup-"+today()+".json", new Blob([JSON.stringify(notes,null,2)],{type:"application/json"})); }
+  if (act==="backup"){ await saveNow(); return download("memo-backup-"+today()+".json", new Blob([JSON.stringify({notes,todos},null,2)],{type:"application/json"})); }
 }
 $("file").addEventListener("change", async e=>{
   let added=0;
   for(const f of e.target.files){
     const text = await f.text();
     if (/\.json$/i.test(f.name)){
-      try{ const arr = JSON.parse(text); for(const o of arr){ if(o&&o.id&&!notes.some(x=>x.id===o.id)){ notes.push({title:"",date:today(),tags:[],body:"",pinned:false,updated:Date.now(),...o}); await dbPut(notes[notes.length-1]); added++; } } }catch{ toast("JSONを読み込めませんでした"); }
+      try{ const j = JSON.parse(text); const arr = Array.isArray(j) ? j : (j.notes||[]); for(const o of (Array.isArray(j)?[]:(j.todos||[]))){ if(o&&o.id&&!todos.some(x=>x.id===o.id)){ todos.push(o); await tdPut(o); added++; } } for(const o of arr){ if(o&&o.id&&!notes.some(x=>x.id===o.id)){ notes.push({title:"",date:today(),tags:[],body:"",pinned:false,updated:Date.now(),...o}); await dbPut(notes[notes.length-1]); added++; } } }catch{ toast("JSONを読み込めませんでした"); }
       continue;
     }
     const n = parseMarkdown(text,f.name);
@@ -491,11 +540,180 @@ $("body").addEventListener("keydown", e=>{
   if(e.key==="Tab" && !e.shiftKey){ e.preventDefault(); const t=e.target,s=t.selectionStart; t.setRangeText("  ",s,t.selectionEnd,"end"); t.dispatchEvent(new Event("input")); }
 });
 
+/* ============ ToDo(リマインド付き) ============ */
+let todos = [];
+let tdFilter = "open";
+let editingTd = null;
+const tdAll = () => tx("todos","readonly",s=>s.getAll());
+const tdPut = t => tx("todos","readwrite",s=>s.put(t));
+const tdDel = id => tx("todos","readwrite",s=>s.delete(id));
+const pad2 = n => String(n).padStart(2,"0");
+const ymd = d => d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());
+const REPEAT = {none:"", daily:"毎日", weekly:"毎週", monthly:"毎月"};
+const dueTs = t => new Date(t.due+"T"+(t.time||"09:00")).getTime();
+function isOverdue(t){ if(t.done||!t.due) return false; return t.time ? dueTs(t) < Date.now() : t.due < today(); }
+function fmtDue(t){
+  if(!t.due) return "";
+  const d = new Date(t.due+"T00:00"), tmr = new Date(); tmr.setDate(tmr.getDate()+1);
+  const s = t.due===today() ? "今日" : t.due===ymd(tmr) ? "明日" : (d.getMonth()+1)+"/"+d.getDate()+"("+"日月火水木金土"[d.getDay()]+")";
+  return s + (t.time ? " "+t.time : "");
+}
+function nextDue(t){
+  const d = new Date(t.due+"T00:00");
+  const step = () => { if(t.repeat==="daily") d.setDate(d.getDate()+1); else if(t.repeat==="weekly") d.setDate(d.getDate()+7); else d.setMonth(d.getMonth()+1); };
+  step(); while (ymd(d) < today()) step();
+  return ymd(d);
+}
+function tdVisible(t){
+  switch(tdFilter){
+    case "open": return !t.done;
+    case "today": return !t.done && t.due===today();
+    case "overdue": return isOverdue(t);
+    case "done": return t.done;
+    default: return true;
+  }
+}
+function todoHtml(t){
+  if (editingTd===t.id){
+    const opts = Object.keys(REPEAT).map(k=>`<option value="${k}" ${t.repeat===k?"selected":""}>${REPEAT[k]||"繰り返しなし"}</option>`).join("");
+    return `<div class="td" data-id="${t.id}"><div class="tdmain">
+      <input class="field tdedit" data-k="text" value="${esc(t.text)}" aria-label="ToDo内容">
+      <div class="row wrap" style="margin-top:8px">
+        <input type="date" class="field" data-k="due" value="${t.due}"><input type="time" class="field" data-k="time" value="${t.time||""}">
+        <select class="field" data-k="repeat">${opts}</select>
+        <button class="btn primary" data-a="save">保存</button><button class="btn" data-a="cancel">キャンセル</button>
+      </div></div></div>`;
+  }
+  const over = isOverdue(t), isToday = !t.done && t.due===today();
+  return `<div class="td ${t.done?"done":""}" data-id="${t.id}">
+    <input type="checkbox" class="chk" ${t.done?"checked":""} aria-label="完了にする">
+    <div class="tdmain"><div class="tdtext">${esc(t.text)}</div>
+      <div class="tdmeta">
+        ${t.due?`<span class="due ${over?"over":isToday?"today":""}">${over?"期限切れ ":"期限 "}${fmtDue(t)}</span>`:""}
+        ${t.repeat!=="none"?`<span>🔁 ${REPEAT[t.repeat]}</span>`:""}
+      </div></div>
+    <button class="ib" data-a="ics" title="カレンダーに追加(.ics)">📅</button>
+    <button class="ib" data-a="edit" title="編集">✎</button>
+    <button class="ib" data-a="del" title="削除">×</button>
+  </div>`;
+}
+function updateBadge(){
+  const n = todos.filter(t=>!t.done && t.due && (t.due<=today())).length;
+  $("todoBadge").textContent = n; $("todoBadge").classList.toggle("hidden", !n);
+}
+function updateNotifyBtn(){
+  const b = $("tdNotify");
+  if(!("Notification" in window)){ b.textContent = "🔔 通知は未対応"; b.disabled = true; return; }
+  b.textContent = Notification.permission==="granted" ? "🔔 通知: オン" : Notification.permission==="denied" ? "🔕 通知: ブロック中" : "🔔 通知を有効にする";
+}
+function renderTodos(){
+  const c = {open:0,today:0,overdue:0,done:0,all:todos.length};
+  todos.forEach(t=>{ if(t.done) c.done++; else { c.open++; if(t.due===today()) c.today++; } if(isOverdue(t)) c.overdue++; });
+  const labels = [["open","未完了"],["today","今日"],["overdue","期限切れ"],["done","完了"],["all","すべて"]];
+  $("tdFilters").innerHTML = labels.map(([k,l])=>`<button class="chip ${k===tdFilter?"on":""}" data-f="${k}">${l} ${c[k]}</button>`).join("");
+  const rows = todos.filter(tdVisible).sort((a,b)=> (a.done-b.done) || (a.done ? b.doneAt-a.doneAt : ((a.due?dueTs(a):Infinity)-(b.due?dueTs(b):Infinity)) || a.created-b.created));
+  $("tdList").innerHTML = rows.length ? rows.map(todoHtml).join("")
+    : `<div class="empty">${todos.length ? "この条件のToDoはありません" : "ToDoはまだありません。<br>上の入力欄から追加しましょう。"}</div>`;
+  updateBadge(); updateNotifyBtn();
+  if (editingTd){ const e = document.querySelector(".tdedit"); if(e && document.activeElement!==e && !e.dataset.f){ e.dataset.f="1"; e.focus(); } }
+}
+async function addTodo(){
+  const text = $("tdText").value.trim();
+  if(!text){ $("tdText").focus(); return; }
+  const due = $("tdDate").value;
+  const t = { id:uid(), text, due, time: due ? $("tdTime").value : "", repeat: due ? $("tdRepeat").value : "none", done:false, doneAt:0, created:Date.now(), notified:false };
+  todos.push(t); await tdPut(t);
+  $("tdText").value=""; $("tdDate").value=""; $("tdTime").value=""; $("tdRepeat").value="none";
+  renderTodos(); writeTodosFile(); $("tdText").focus(); checkReminders();
+}
+async function toggleTodo(id){
+  const t = todos.find(x=>x.id===id); if(!t) return;
+  if (!t.done && t.repeat!=="none" && t.due){ t.due = nextDue(t); t.notified = false; toast("次回: "+fmtDue(t)); }
+  else { t.done = !t.done; t.doneAt = t.done ? Date.now() : 0; if(!t.done) t.notified = false; }
+  await tdPut(t); renderTodos(); writeTodosFile();
+}
+async function saveTodoEdit(row){
+  const t = todos.find(x=>x.id===row.dataset.id); if(!t) return;
+  const g = k => row.querySelector(`[data-k="${k}"]`).value;
+  const text = g("text").trim(); if(!text){ toast("内容を入力してください"); return; }
+  const due = g("due");
+  if (due!==t.due || (due && g("time")!==t.time)) t.notified = false;
+  t.text = text; t.due = due; t.time = due ? g("time") : ""; t.repeat = due ? g("repeat") : "none";
+  editingTd = null; await tdPut(t); renderTodos(); writeTodosFile();
+}
+function todoIcs(t){
+  if(!t.due){ toast("先に期限を設定してください(✎で編集)"); return; }
+  const stamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g,"");
+  const e = s => s.replace(/[\\;,]/g,"\\$&").replace(/\n/g,"\\n");
+  const d = t.due.replace(/-/g,"");
+  const L = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//local-memo//JA","BEGIN:VEVENT","UID:"+t.id+"@local-memo","DTSTAMP:"+stamp,
+    t.time ? "DTSTART:"+d+"T"+t.time.replace(":","")+"00" : "DTSTART;VALUE=DATE:"+d,
+    "SUMMARY:"+e(t.text)];
+  const r = {daily:"DAILY",weekly:"WEEKLY",monthly:"MONTHLY"}[t.repeat]; if(r) L.push("RRULE:FREQ="+r);
+  L.push("BEGIN:VALARM","TRIGGER:PT0M","ACTION:DISPLAY","DESCRIPTION:"+e(t.text),"END:VALARM","END:VEVENT","END:VCALENDAR");
+  download("todo-"+t.due+".ics", new Blob([L.join("\r\n")],{type:"text/calendar"}));
+}
+function todosMd(){
+  const line = t => "- ["+(t.done?"x":" ")+"] "+t.text+(t.due||t.repeat!=="none" ? "(" + [t.due?"期限: "+t.due+(t.time?" "+t.time:""):"", REPEAT[t.repeat]].filter(Boolean).join(" / ") + ")" : "");
+  const open = todos.filter(t=>!t.done), done = todos.filter(t=>t.done);
+  return "---\ntitle: \"ToDo\"\ndate: "+today()+"\ntags: [todo]\n---\n\n## 未完了\n\n"+(open.map(line).join("\n")||"(なし)")+"\n\n## 完了\n\n"+(done.map(line).join("\n")||"(なし)")+"\n";
+}
+async function writeTodosFile(){
+  if(!dirReady) return;
+  try{ const fh = await dirHandle.getFileHandle("_todos.md",{create:true}); const w = await fh.createWritable(); await w.write(todosMd()); await w.close(); }catch(e){ console.error(e); }
+}
+/* リマインド:ページを開いている間、30秒ごとに期限をチェック */
+let remindTimer = null;
+function checkReminders(){
+  const now = Date.now(), fired = [];
+  for (const t of todos){ if(t.done||!t.due||t.notified) continue; if(dueTs(t)<=now){ t.notified=true; tdPut(t); fired.push(t); } }
+  if (fired.length){
+    const msg = fired.length===1 ? fired[0].text : "期限が来たToDoが"+fired.length+"件あります";
+    if ("Notification" in window && Notification.permission==="granted"){ try{ new Notification("ToDo", {body: msg}); }catch{} }
+    toast("⏰ "+msg);
+  }
+  if (!editingTd) renderTodos(); else updateBadge();
+}
+function startReminders(){ clearInterval(remindTimer); remindTimer = setInterval(checkReminders, 30000); setTimeout(checkReminders, 800); }
+function setMode(m){
+  const td = m==="todo";
+  $("app").classList.toggle("hidden", td); $("todoView").classList.toggle("hidden", !td);
+  $("modeNotes").classList.toggle("on", !td); $("modeTodo").classList.toggle("on", td);
+  if (td){ saveNow(); renderTodos(); } else { document.body.classList.remove("editing"); }
+  metaSet("mode", m);
+}
+$("modeNotes").onclick = ()=>setMode("notes");
+$("modeTodo").onclick = ()=>setMode("todo");
+$("tdAdd").onclick = addTodo;
+$("tdText").addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.isComposing){ e.preventDefault(); addTodo(); } });
+$("tdFilters").addEventListener("click", e=>{ const b=e.target.closest("[data-f]"); if(!b) return; tdFilter=b.dataset.f; renderTodos(); });
+$("tdNotify").onclick = async ()=>{
+  if(!("Notification" in window)) return;
+  if (Notification.permission==="denied"){ toast("ブラウザの設定で通知を許可してください"); return; }
+  await Notification.requestPermission(); updateNotifyBtn();
+};
+$("tdList").addEventListener("change", e=>{ if(e.target.classList.contains("chk")) toggleTodo(e.target.closest(".td").dataset.id); });
+$("tdList").addEventListener("click", async e=>{
+  const row = e.target.closest(".td"), btn = e.target.closest("[data-a]"); if(!row||!btn) return;
+  const id = row.dataset.id, t = todos.find(x=>x.id===id), a = btn.dataset.a;
+  if (a==="edit"){ editingTd = id; renderTodos(); }
+  else if (a==="cancel"){ editingTd = null; renderTodos(); }
+  else if (a==="save") saveTodoEdit(row);
+  else if (a==="ics" && t) todoIcs(t);
+  else if (a==="del" && t){ if(!confirm("「"+t.text+"」を削除しますか?")) return; todos = todos.filter(x=>x.id!==id); await tdDel(id); renderTodos(); writeTodosFile(); }
+});
+$("tdList").addEventListener("keydown", e=>{
+  if(!e.target.classList.contains("tdedit")) return;
+  if(e.key==="Enter" && !e.isComposing){ e.preventDefault(); saveTodoEdit(e.target.closest(".td")); }
+  if(e.key==="Escape"){ editingTd=null; renderTodos(); }
+});
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) checkReminders(); });
+
 /* ============ 起動 ============ */
 (async function init(){
   try{
     db = await openDB();
-    notes = await dbAll();
+    notes = await dbAll(); todos = await tdAll();
     const th = await metaGet("theme"); if(th) document.documentElement.dataset.theme = th;
     try{ dirHandle = await metaGet("dir") || null; }catch{ dirHandle=null; }
     if (dirHandle) await checkDirPerm(false);
@@ -503,7 +721,8 @@ $("body").addEventListener("keydown", e=>{
   }catch(e){
     console.error(e); toast("このブラウザではデータ保存を利用できません(プライベートモード等)");
   }
-  refresh(); open(null);
+  refresh(); open(null); renderTodos(); startReminders();
+  if (await metaGet("mode")==="todo") setMode("todo");
 })();
 </script>
 </body>
